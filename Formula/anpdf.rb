@@ -1,8 +1,8 @@
 class Anpdf < Formula
   desc "Local, contract-validated, agent-native PDF toolkit"
   homepage "https://github.com/nextexcite/anPDF"
-  url "https://github.com/nextexcite/anPDF/releases/download/v0.2.0/anpdf-0.2.0-macos-arm64.tar.gz"
-  sha256 "dea2f2ff3be53902c5d1ad10843b44fdce9ea385a5bc98185fb09b122492a537"
+  url "https://github.com/nextexcite/anPDF/releases/download/v0.3.0/anpdf-0.3.0-macos-arm64.tar.gz"
+  sha256 "bf1f0582839da28e2c409719a9eaf28e80e9d84493b3c822dcd939d5df38808f"
   license "Apache-2.0"
 
   depends_on arch: :arm64
