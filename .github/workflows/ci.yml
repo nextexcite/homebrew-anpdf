@@ -60,6 +60,7 @@ jobs:
           open("dense.pdf", "wb").write(b"".join(parts))
           PY
           ls -l dense.pdf
+          python3 -c "import os; s=os.path.getsize('dense.pdf'); print('fixture bytes:', s); assert s > 5_000_000, s"
 
       - name: Baseline — installed binary without libpdfium.dylib
         run: |
@@ -89,26 +90,26 @@ jobs:
           test -s "$ROOT/p.png" && echo "renderPage wrote p.png ($(stat -f%z "$ROOT/p.png") bytes)" >> patched.txt
           "$ANPDF" extractText --root "$ROOT" \
             --request-json '{"input":{"path":"dense.pdf"},"pages":[1]}' >> patched.txt
-          for MB in 3 5; do
-            echo "--- compress --max-bytes ${MB}mb ---" >> patched.txt
-            "$ANPDF" compress dense.pdf --max-bytes ${MB}mb --replace >> patched.txt 2>&1 || true
-            REQ=$(python3 -c "import json;print(json.dumps({'input':{'path':'dense.pdf'},'output':{'path':'out${MB}.pdf'},'maxOutputBytes':${MB}*1024*1024,'onTargetMiss':'bestEffort'}))")
-            "$ANPDF" compress --root "$ROOT" --request-json "$REQ" > "$ROOT/c${MB}.json" || true
-            cat "$ROOT/c${MB}.json" >> patched.txt
+          for BYTES in 3000000 5000000; do
+            echo "--- compress maxOutputBytes=${BYTES} ---" >> patched.txt
+            REQ=$(python3 -c "import json;print(json.dumps({'input':{'path':'dense.pdf'},'output':{'path':'out${BYTES}.pdf'},'maxOutputBytes':${BYTES},'onTargetMiss':'bestEffort'}))")
+            "$ANPDF" compress --root "$ROOT" --request-json "$REQ" > "$ROOT/c${BYTES}.json"
+            cat "$ROOT/c${BYTES}.json" >> patched.txt
             python3 -c "
-          import json
-          r = json.load(open('$ROOT/c${MB}.json'))
+          import json, sys
+          r = json.load(open('$ROOT/c${BYTES}.json')).get('result', {})
+          out = r.get('bytes')
+          met = r.get('targetMet')
           print('techniques:', r.get('techniques'))
-          print('targetMet:', r.get('targetMet') or r.get('statistics',{}).get('targetMet'))
-          print('bytes:', r.get('statistics',{}).get('bytesIn'), '->', r.get('statistics',{}).get('bytesOut'))
-          " >> patched.txt || true
+          print('inputBytes:', r.get('inputBytes'), '-> bytes:', out, 'targetBytes:', r.get('targetBytes'), 'targetMet:', met)
+          assert out is not None and out <= ${BYTES}, f'output bytes {out} exceeds ${BYTES}'
+          assert met is True, 'targetMet is not true'
+          assert 'pageRasterization' in (r.get('techniques') or []), 'pageRasterization absent'
+          " >> patched.txt
+            ls -l "$ROOT/out${BYTES}.pdf" >> patched.txt
+            SZ=$(stat -f%z "$ROOT/out${BYTES}.pdf")
+            echo "on-disk out${BYTES}.pdf bytes: $SZ" >> patched.txt
+            [ "$SZ" -le "${BYTES}" ]
           done
           cat patched.txt
-
-      - name: Assert the renderer technique was selected
-        run: |
-          grep -q pageRasterization patched.txt && echo "pageRasterization selected" || {
-            echo "::warning::pageRasterization absent — inspect patched.txt"
-            cat patched.txt
-            exit 1
-          }
+          uname -a
