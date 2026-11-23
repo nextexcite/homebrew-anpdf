@@ -1,0 +1,118 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-binary:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install the formula from this checkout
+        run: |
+          set -e
+          brew install --formula ./Formula/anpdf.rb || {
+            brew tap nextexcite/anpdf "file://$GITHUB_WORKSPACE" || true
+            brew trust --formula nextexcite/anpdf/anpdf || true
+            brew install anpdf
+          }
+
+      - name: Run the formula's own test block
+        run: |
+          brew test ./Formula/anpdf.rb || brew test anpdf
+
+      - name: Generate a synthetic dense-vector fixture (>5 MiB)
+        run: |
+          python3 - <<'PY'
+          import random
+          rng = random.Random(42)
+          parts = [b"%PDF-1.4\n"]
+          offsets = []
+          def obj(n, s):
+              offsets.append((n, sum(len(p) for p in parts)))
+              parts.append(f"{n} 0 obj\n{s}\nendobj\n".encode())
+          # High-entropy path ops keep flate recompression above the 5,000,000
+          # byte floor so reaching the targets requires pageRasterization.
+          n_pages = 40
+          ops_per_page = 4200
+          obj(1, "<</Type/Catalog/Pages 2 0 R>>")
+          kids = " ".join(f"{3 + 2*i} 0 R" for i in range(n_pages))
+          obj(2, f"<</Type/Pages/Kids[{kids}]/Count {n_pages}>>")
+          for i in range(n_pages):
+              content_obj = 4 + 2*i
+              obj(3 + 2*i, f"<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents {content_obj} 0 R/Resources<<>>>>")
+              body = "".join(
+                  f"{rng.randrange(612)}.{rng.randrange(10**8)} {rng.randrange(792)}.{rng.randrange(10**8)} m "
+                  f"{rng.randrange(612)}.{rng.randrange(10**8)} {rng.randrange(792)}.{rng.randrange(10**8)} l "
+                  f"{rng.randrange(612)}.{rng.randrange(10**8)} {rng.randrange(792)}.{rng.randrange(10**8)} l h S\n"
+                  for _ in range(ops_per_page)
+              )
+              obj(content_obj, f"<</Length {len(body)}>>\nstream\n{body}endstream")
+          xref_pos = sum(len(p) for p in parts)
+          parts.append(f"xref\n0 {len(offsets) + 1}\n0000000000 65535 f \n".encode())
+          for _n, off in offsets:
+              parts.append(f"{off:010d} 00000 n \n".encode())
+          parts.append(f"trailer\n<</Size {len(offsets) + 1}/Root 1 0 R>>\nstartxref\n{xref_pos}\n%%EOF\n".encode())
+          open("dense.pdf", "wb").write(b"".join(parts))
+          PY
+          ls -l dense.pdf
+          python3 -c "import os; s=os.path.getsize('dense.pdf'); print('fixture bytes:', s); assert s > 5_000_000, s"
+
+      - name: Baseline — installed binary without libpdfium.dylib
+        run: |
+          set -e
+          ROOT="$GITHUB_WORKSPACE"
+          KEG="$(brew --cellar anpdf)/$(brew info --json=v2 anpdf | python3 -c 'import json,sys; print(json.load(sys.stdin)["formulae"][0]["installed"][0]["version"])')"
+          test -f "$KEG/lib/anpdf/libpdfium.dylib"
+          mv "$KEG/lib/anpdf/libpdfium.dylib" /tmp/libpdfium.dylib
+          echo "## baseline (no libpdfium in keg)" > baseline.txt
+          "$(brew --prefix)/bin/anpdf" render-page --root "$ROOT" \
+            --request-json '{"input":{"path":"dense.pdf"},"page":1,"output":{"path":"b.png"}}' \
+            >> baseline.txt 2>&1 || echo "exit=$? (renderer unavailable — expected on baseline)" >> baseline.txt
+          cat baseline.txt
+          mv /tmp/libpdfium.dylib "$KEG/lib/anpdf/libpdfium.dylib"
+          echo "libpdfium restored"
+        continue-on-error: true
+
+      - name: Patched — installed binary resolves the renderer
+        run: |
+          set -e
+          ROOT="$GITHUB_WORKSPACE"
+          ANPDF="$(brew --prefix)/bin/anpdf"
+          echo "## patched formula" > patched.txt
+          "$ANPDF" --version >> patched.txt
+          "$ANPDF" render-page --root "$ROOT" \
+            --request-json '{"input":{"path":"dense.pdf"},"page":1,"output":{"path":"p.png"}}' >> patched.txt
+          test -s "$ROOT/p.png" && echo "render-page wrote p.png ($(stat -f%z "$ROOT/p.png") bytes)" >> patched.txt
+          "$ANPDF" extract-text --root "$ROOT" \
+            --request-json '{"input":{"path":"dense.pdf"},"pages":[1]}' >> patched.txt
+          for BYTES in 3000000 5000000; do
+            echo "--- compress maxOutputBytes=${BYTES} ---" >> patched.txt
+            REQ=$(python3 -c "import json;print(json.dumps({'input':{'path':'dense.pdf'},'output':{'path':'out${BYTES}.pdf'},'maxOutputBytes':${BYTES},'onTargetMiss':'bestEffort'}))")
+            "$ANPDF" compress --root "$ROOT" --request-json "$REQ" > "$ROOT/c${BYTES}.json"
+            cat "$ROOT/c${BYTES}.json" >> patched.txt
+            python3 -c "
+          import json, sys
+          r = json.load(open('$ROOT/c${BYTES}.json')).get('result', {})
+          out = r.get('bytes')
+          met = r.get('targetMet')
+          print('techniques:', r.get('techniques'))
+          print('inputBytes:', r.get('inputBytes'), '-> bytes:', out, 'targetBytes:', r.get('targetBytes'), 'targetMet:', met)
+          assert out is not None and out <= ${BYTES}, f'output bytes {out} exceeds ${BYTES}'
+          assert met is True, 'targetMet is not true'
+          assert 'pageRasterization' in (r.get('techniques') or []), 'pageRasterization absent'
+          " >> patched.txt
+            ls -l "$ROOT/out${BYTES}.pdf" >> patched.txt
+            SZ=$(stat -f%z "$ROOT/out${BYTES}.pdf")
+            echo "on-disk out${BYTES}.pdf bytes: $SZ" >> patched.txt
+            [ "$SZ" -le "${BYTES}" ]
+          done
+          cat patched.txt
+          uname -a
