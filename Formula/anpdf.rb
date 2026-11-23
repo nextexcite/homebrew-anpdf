@@ -55,8 +55,8 @@ class Anpdf < Formula
       338
       %%EOF
     EOS
-    out = shell_output("#{bin}/anpdf renderPage --root #{testpath} --request-json '{\"input\":{\"path\":\"page.pdf\"},\"page\":1,\"output\":{\"path\":\"page.png\"}}'")
-    assert_match "renderPage", out
+    out = shell_output("#{bin}/anpdf render-page --root #{testpath} --request-json '{\"input\":{\"path\":\"page.pdf\"},\"page\":1,\"output\":{\"path\":\"page.png\"}}'")
+    assert_match "render-page", out
     assert_predicate testpath/"page.png", :exist?
   end
 end

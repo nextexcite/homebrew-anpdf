@@ -70,7 +70,7 @@ jobs:
           test -f "$KEG/lib/anpdf/libpdfium.dylib"
           mv "$KEG/lib/anpdf/libpdfium.dylib" /tmp/libpdfium.dylib
           echo "## baseline (no libpdfium in keg)" > baseline.txt
-          "$(brew --prefix)/bin/anpdf" renderPage --root "$ROOT" \
+          "$(brew --prefix)/bin/anpdf" render-page --root "$ROOT" \
             --request-json '{"input":{"path":"dense.pdf"},"page":1,"output":{"path":"b.png"}}' \
             >> baseline.txt 2>&1 || echo "exit=$? (renderer unavailable — expected on baseline)" >> baseline.txt
           cat baseline.txt
@@ -85,10 +85,10 @@ jobs:
           ANPDF="$(brew --prefix)/bin/anpdf"
           echo "## patched formula" > patched.txt
           "$ANPDF" --version >> patched.txt
-          "$ANPDF" renderPage --root "$ROOT" \
+          "$ANPDF" render-page --root "$ROOT" \
             --request-json '{"input":{"path":"dense.pdf"},"page":1,"output":{"path":"p.png"}}' >> patched.txt
-          test -s "$ROOT/p.png" && echo "renderPage wrote p.png ($(stat -f%z "$ROOT/p.png") bytes)" >> patched.txt
-          "$ANPDF" extractText --root "$ROOT" \
+          test -s "$ROOT/p.png" && echo "render-page wrote p.png ($(stat -f%z "$ROOT/p.png") bytes)" >> patched.txt
+          "$ANPDF" extract-text --root "$ROOT" \
             --request-json '{"input":{"path":"dense.pdf"},"pages":[1]}' >> patched.txt
           for BYTES in 3000000 5000000; do
             echo "--- compress maxOutputBytes=${BYTES} ---" >> patched.txt
