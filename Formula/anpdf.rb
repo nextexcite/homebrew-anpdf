@@ -26,37 +26,75 @@ class Anpdf < Formula
     assert_match "_anpdf", shell_output("#{bin}/anpdf completions bash")
     # Renderer-backed operation: proves the installed layout exposes libpdfium.
     (testpath/"page.pdf").binwrite <<~EOS
-      %PDF-1.4
+      %PDF-1.3
+      %#### 
       1 0 obj
-      <</Type/Catalog/Pages 2 0 R>>
+      <<
+      /Producer (pypdf)
+      >>
       endobj
       2 0 obj
-      <</Type/Pages/Kids[3 0 R]/Count 1>>
+      <<
+      /Type /Pages
+      /Count 1
+      /Kids [ 4 0 R ]
+      >>
       endobj
       3 0 obj
-      <</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>>
+      <<
+      /Type /Catalog
+      /Pages 2 0 R
+      >>
       endobj
       4 0 obj
-      <</Length 33>>
+      <<
+      /Type /Page
+      /Resources <<
+      /Font <<
+      /F1 6 0 R
+      >>
+      >>
+      /MediaBox [ 0.0 0.0 612 792 ]
+      /Parent 2 0 R
+      /Contents 5 0 R
+      >>
+      endobj
+      5 0 obj
+      <<
+      /Length 33
+      >>
       stream
       BT /F1 24 Tf 72 700 Td (Hi) Tj ET
       endstream
       endobj
+      6 0 obj
+      <<
+      /Type /Font
+      /Subtype /Type1
+      /BaseFont /Helvetica
+      >>
+      endobj
       xref
-      0 5
-      0000000000 65535 f
-      0000000009 00000 n
-      0000000054 00000 n
-      0000000105 00000 n
-      0000000257 00000 n
+      0 7
+      0000000000 65535 f 
+      0000000015 00000 n 
+      0000000054 00000 n 
+      0000000113 00000 n 
+      0000000162 00000 n 
+      0000000294 00000 n 
+      0000000377 00000 n 
       trailer
-      <</Size 5/Root 1 0 R>>
+      <<
+      /Size 7
+      /Root 3 0 R
+      /Info 1 0 R
+      >>
       startxref
-      338
+      447
       %%EOF
     EOS
     out = shell_output("#{bin}/anpdf render-page --root #{testpath} --request-json '{\"input\":{\"path\":\"page.pdf\"},\"page\":1,\"output\":{\"path\":\"page.png\"}}'")
-    assert_match "render-page", out
+    assert_match "renderPage", out
     assert_predicate testpath/"page.png", :exist?
   end
 end
