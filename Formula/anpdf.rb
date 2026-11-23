@@ -1,8 +1,8 @@
 class Anpdf < Formula
   desc "Local, contract-validated, agent-native PDF toolkit"
   homepage "https://github.com/nextexcite/anPDF"
-  url "https://github.com/nextexcite/anPDF/releases/download/v0.4.0/anpdf-0.4.0-macos-arm64.tar.gz"
-  sha256 "0ba2ef004515117c0f0b691d3a8f6a834d159cf6448c81ade06c144dc9ada24f"
+  url "https://github.com/nextexcite/anPDF/releases/download/v0.4.1/anpdf-0.4.1-macos-arm64.tar.gz"
+  sha256 "fa21e6c7470a52077c75ea35b327c46ae09dbd5a382a8e09746b19b48eb80566"
   license "Apache-2.0"
   # revision 1: first v0.4.0 installs missed libpdfium; upgrade must reinstall.
   revision 1
