@@ -54,6 +54,10 @@ jobs:
           url, sha = sys.argv[1], sys.argv[2]
           p = pathlib.Path("Formula/anpdf.rb")
           s = p.read_text()
+          old_url = re.search(r'^  url "([^"]+)"$', s, re.MULTILINE).group(1)
+          if old_url != url:
+              # A formula revision is scoped to the old upstream release.
+              s = re.sub(r'^(?:  # revision 1: first v0\.4\.0[^\n]*\n)?  revision \d+\n', '', s, flags=re.MULTILINE)
           s = re.sub(r'url ".*"', f'url "{url}"', s, count=1)
           s = re.sub(r'sha256 "[0-9a-f]{64}"', f'sha256 "{sha}"', s, count=1)
           p.write_text(s)
